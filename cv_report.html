@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyclic Voltammetry Report</title>
+  <!-- Including prop-types.min.js first -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+  <!-- Including React and ReactDOM -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <!-- Including Babel for JSX transformation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <!-- Including PapaParse for CSV parsing -->
+  <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+  <!-- Including Chrono for date parsing (not used here but required by guidelines) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chrono-node/1.3.11/chrono.min.js"></script>
+  <!-- Including Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Including Recharts last -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.15.0/Recharts.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div id="root" class="container mx-auto p-6"></div>
+
+  <script type="text/babel">
+    // Defining the React component for the CV report
+    const CVReport = () => {
+      // Managing state for the data and loading status
+      const [data, setData] = React.useState([]);
+      const [loading, setLoading] = React.useState(true);
+      const [thresholds, setThresholds] = React.useState({});
+
+      // Loading and processing the data
+      React.useEffect(() => {
+        // Fetching the CSV data using loadFileData
+        const csvData = loadFileData("transformed_layer_cv.csv");
+
+        // Parsing the CSV data
+        Papa.parse(csvData, {
+          header: true,
+          skipEmptyLines: true,
+          dynamicTyping: false,
+          transformHeader: (header) => header.trim().replace(/^"|"$/g, ''),
+          transform: (value, header) => {
+            let cleaned = value.trim().replace(/^"|"$/g, '');
+            return cleaned;
+          },
+          complete: (results) => {
+            // Cleaning and converting data types
+            const cleanedData = results.data.map(row => ({
+              setup: row["setup"],
+              voltage: parseFloat(row["voltage"]),
+              current: parseFloat(row["current"])
+            })).filter(row => 
+              row.setup && 
+              !isNaN(row.voltage) && 
+              !isNaN(row.current)
+            );
+
+            // Sorting by voltage for each setup to ensure smooth lines
+            const sortedData = cleanedData.sort((a, b) => {
+              if (a.setup === b.setup) {
+                return a.voltage - b.voltage;
+              }
+              return a.setup.localeCompare(b.setup);
+            });
+
+            // Calculating thresholds (max and min currents for each setup)
+            const setups = [...new Set(sortedData.map(row => row.setup))];
+            const thresholdsData = setups.reduce((acc, setup) => {
+              const setupData = sortedData.filter(row => row.setup === setup);
+              const currents = setupData.map(row => row.current);
+              const maxCurrent = Math.max(...currents);
+              const minCurrent = Math.min(...currents);
+              const maxPoint = setupData.find(row => row.current === maxCurrent);
+              const minPoint = setupData.find(row => row.current === minCurrent);
+              acc[setup] = { max: maxPoint, min: minPoint };
+              return acc;
+            }, {});
+
+            // Setting the state
+            setData(sortedData);
+            setThresholds(thresholdsData);
+            setLoading(false);
+          },
+          error: (err) => {
+            console.error("Error parsing CSV:", err);
+            setLoading(false);
+          }
+        });
+      }, []);
+
+      // Rendering loading message if data is not yet loaded
+      if (loading) {
+        return (
+          <div class="text-center text-gray-600">
+            <h2 class="text-2xl font-semibold mb-4">Loading Cyclic Voltammetry Data...</h2>
+            <p>Please wait while the data is being processed.</p>
+          </div>
+        );
+      }
+
+      // Defining colors for each setup
+      const colors = {
+        "bare": "#FF5733",
+        "Mxene": "#33FF57",
+        "Mxene + AuNPs": "#3357FF",
+        "Mxene + AuNPs + nic": "#FF33A1"
+      };
+
+      // Rendering the report
+      return (
+        <div class="bg-white shadow-lg rounded-lg p-6">
+          {/* Adding a summary section */}
+          <h1 class="text-3xl font-bold text-gray-800 mb-4">Cyclic Voltammetry Analysis Report</h1>
+          <p class="text-gray-600 mb-6">
+            This report visualizes the cyclic voltammetry (CV) data for four setups: bare, Mxene, Mxene + AuNPs, and Mxene + AuNPs + nic. Each line represents the current (µA) vs. voltage (V) for a specific setup, with thresholds indicating peak currents.
+          </p>
+
+          {/* Adding the line chart */}
+          <h2 class="text-xl font-semibold text-gray-700 mb-4">CV Plot: Current vs. Voltage</h2>
+          <div class="w-full h-[500px]">
+            <Recharts.ResponsiveContainer width="100%" height="100%">
+              <Recharts.LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                <Recharts.CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <Recharts.XAxis
+                  dataKey="voltage"
+                  label={{ value: "Voltage (V)", position: "bottom", offset: 0, fill: "#4b5563", fontSize: 12 }}
+                  tick={{ fontSize: 12 }}
+                />
+                <Recharts.YAxis
+                  label={{ value: "Current (µA)", angle: -90, position: "insideLeft", fill: "#4b5563", fontSize: 12 }}
+                  tick={{ fontSize: 12 }}
+                />
+                <Recharts.Tooltip
+                  formatter={(value, name, props) => {
+                    if (name === "current") return `${value.toFixed(2)} µA`;
+                    if (name === "voltage") return `${value.toFixed(4)} V`;
+                    return value;
+                  }}
+                />
+                <Recharts.Legend verticalAlign="top" height={36} />
+                {Object.keys(colors).map(setup => (
+                  <Recharts.Line
+                    key={setup}
+                    type="monotone"
+                    dataKey="current"
+                    data={data.filter(row => row.setup === setup)}
+                    name={setup}
+                    stroke={colors[setup]}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                ))}
+                {/* Adding threshold markers (max and min currents) */}
+                {Object.entries(thresholds).map(([setup, points]) => (
+                  <>
+                    <Recharts.ReferenceDot
+                      x={points.max.voltage}
+                      y={points.max.current}
+                      r={5}
+                      fill={colors[setup]}
+                      stroke="none"
+                      label={{ value: `Max: ${points.max.current.toFixed(2)} µA`, position: "top", fontSize: 12, fill: colors[setup] }}
+                    />
+                    <Recharts.ReferenceDot
+                      x={points.min.voltage}
+                      y={points.min.current}
+                      r={5}
+                      fill={colors[setup]}
+                      stroke="none"
+                      label={{ value: `Min: ${points.min.current.toFixed(2)} µA`, position: "bottom", fontSize: 12, fill: colors[setup] }}
+                    />
+                  </>
+                ))}
+              </Recharts.LineChart>
+            </Recharts.ResponsiveContainer>
+          </div>
+
+          {/* Adding an interesting fact */}
+          <h2 class="text-xl font-semibold text-gray-700 mt-6 mb-2">Interesting Fact</h2>
+          <p class="text-gray-600">
+            The 'bare' setup exhibits the largest current range, with a peak current of {thresholds["bare"]?.max.current.toFixed(2)} µA and a minimum of {thresholds["bare"]?.min.current.toFixed(2)} µA, indicating a higher electrochemical activity compared to the other setups. This suggests that the bare electrode has the highest sensitivity to the applied voltage in this CV experiment.
+          </p>
+
+          {/* Adding a conclusion */}
+          <h2 class="text-xl font-semibold text-gray-700 mt-6 mb-2">Conclusion</h2>
+          <p class="text-gray-600">
+            The CV plot reveals distinct electrochemical behaviors across the four setups. The 'bare' setup shows the highest current response, while 'Mxene + AuNPs + nic' exhibits the smallest current range, suggesting that the addition of nicotine may suppress the electrochemical activity. The thresholds highlight the peak currents, which can be used to identify the redox potentials for each setup. Further analysis could focus on the peak positions to determine the electrochemical properties of each material.
+          </p>
+        </div>
+      );
+    };
+
+    // Rendering the component using createRoot
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<CVReport />);
+  </script>
+</body>
+</html>
