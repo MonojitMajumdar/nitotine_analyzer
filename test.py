@@ -1,36 +1,50 @@
+import streamlit as st
 import pandas as pd
 
-# Read the Excel file
-data = pd.read_excel("layer_CV.xlsx", skiprows=2)
+st.set_page_config(page_title="Nicotine Analyzer", layout="wide")
 
-# Define the setups
-setups = ["bare", "Mxene", "Mxene + AuNPs", "Mxene + AuNPs + nic"]
+st.title("Nicotine Analyzer - Layer CV Processor")
 
-# Create an empty DataFrame to store the transformed data
-transformed_data = pd.DataFrame(columns=["setup", "voltage", "current"])
+# Upload Excel file
+uploaded_file = st.file_uploader("Upload your Excel file (xlsx)", type=["xlsx"])
 
-# Process each setup
-for i, setup in enumerate(setups):
-    # Extract voltage and current columns for the current setup
-    voltage_col = data.columns[i * 2]  # Voltage column (e.g., 0, 2, 4, 6)
-    current_col = data.columns[i * 2 + 1]  # Current column (e.g., 1, 3, 5, 7)
-    
-    # Create a DataFrame for this setup
-    setup_df = pd.DataFrame({
-        "setup": [setup] * len(data),
-        "voltage": data[voltage_col],
-        "current": data[current_col]
-    })
-    
-    # Append to the main DataFrame
-    transformed_data = pd.concat([transformed_data, setup_df], ignore_index=True)
+if uploaded_file:
+    # Read Excel file, skip first 2 rows like your original code
+    data = pd.read_excel(uploaded_file, skiprows=2)
 
-# Drop any rows with NaN values
-transformed_data = transformed_data.dropna()
+    # Define setups
+    setups = ["bare", "Mxene", "Mxene + AuNPs", "Mxene + AuNPs + nic"]
 
-# Save to CSV without trailing commas
-transformed_data.to_csv("C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/transformed_layer_cv.csv", 
-                        index=False, 
-                        header=True, 
-                        lineterminator='\n')
-print("CSV file created successfully at C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/transformed_layer_cv.csv")
+    # Create transformed dataframe
+    transformed_data = pd.DataFrame(columns=["setup", "voltage", "current"])
+
+    for i, setup in enumerate(setups):
+        # Extract columns safely
+        voltage_col = data.columns[i * 2]
+        current_col = data.columns[i * 2 + 1]
+
+        setup_df = pd.DataFrame({
+            "setup": [setup] * len(data),
+            "voltage": data[voltage_col],
+            "current": data[current_col]
+        })
+
+        transformed_data = pd.concat([transformed_data, setup_df], ignore_index=True)
+
+    # Drop missing values
+    transformed_data = transformed_data.dropna()
+
+    # Show dataframe inside app
+    st.subheader("Transformed Data")
+    st.dataframe(transformed_data)
+
+    # Prepare CSV for download
+    csv = transformed_data.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Download CSV",
+        data=csv,
+        file_name="transformed_layer_cv.csv",
+        mime="text/csv"
+    )
+else:
+    st.info(" Please upload an Excel file to process.")

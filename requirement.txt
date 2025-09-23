@@ -1,6 +1,3 @@
-numpy
-python_dateutil
-pytz
+streamlit
 pandas
-et_xmlfile
 openpyxl
